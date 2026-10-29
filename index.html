@@ -18,8 +18,8 @@
 <script>
 /* Paste your Supabase Project URL and publishable key below.
    Never put a service_role/secret key in browser code. */
-const SUPABASE_URL = "YOUR_SUPABASE_PROJECT_URL";https://awpjnjpwlplfnpjzglja.supabase.co
-const SUPABASE_PUBLISHABLE_KEY = "YOUR_SUPABASE_PUBLISHABLE_KEY";sb_publishable_fjBmbpOMeaKL2bmlxh3nVA_pBgwSc2V
+const SUPABASE_URL = "https://awpjnjpwlplfnpjzglja.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_fjBmbpOMeaKL2bmlxh3nVA_pBgwSc2V";
 const configured = !SUPABASE_URL.includes("YOUR_") && !SUPABASE_PUBLISHABLE_KEY.includes("YOUR_");
 const client = configured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY) : null;
 const root = document.querySelector("#root");
