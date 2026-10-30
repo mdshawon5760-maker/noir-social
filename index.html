@@ -45,21 +45,41 @@ function mediaUrl(path){return client.storage.from("post-media").getPublicUrl(pa
 async function renderFeed(){
   const v=document.querySelector('#view');
   v.innerHTML='<div class="empty">Loading your feed…</div>';
-  const {data:posts,error}=await client.from('posts').select('id,user_id,caption,media_path,media_type,created_at').order('created_at',{ascending:false}).limit(50);
-  if(error){v.innerHTML='<div class="empty">Could not load posts: '+esc(error.message)+'</div>';return}
-  const rows=posts||[], ids=[...new Set(rows.map(p=>p.user_id))], postIds=rows.map(p=>p.id);
-  let profiles=[],likes=[],comments=[];
-  if(ids.length){const r=await client.from('profiles').select('id,username,display_name,avatar_url').in('id',ids);if(r.error){v.innerHTML='<div class="empty">Could not load profiles: '+esc(r.error.message)+'</div>';return}profiles=r.data||[]}
-  if(postIds.length){const [lr,cr]=await Promise.all([client.from('likes').select('post_id,user_id').in('post_id',postIds),client.from('comments').select('id,post_id,user_id,body,created_at').in('post_id',postIds).order('created_at',{ascending:true})]);if(lr.error||cr.error){v.innerHTML='<div class="empty">Could not load post activity: '+esc((lr.error||cr.error).message)+'</div>';return}likes=lr.data||[];comments=cr.data||[]}
-  const commenterIds=[...new Set(comments.map(x=>x.user_id))];let commenterProfiles=[];
-  if(commenterIds.length){const r=await client.from('profiles').select('id,username').in('id',commenterIds);if(r.error){v.innerHTML='<div class="empty">Could not load comment profiles: '+esc(r.error.message)+'</div>';return}commenterProfiles=r.data||[]}
-  const profileMap=new Map(profiles.map(x=>[x.id,x])), commenterMap=new Map(commenterProfiles.map(x=>[x.id,x]));
-  cachedPosts=rows.map(p=>({...p,profiles:profileMap.get(p.user_id)||null,likes:likes.filter(x=>x.post_id===p.id),comments:comments.filter(x=>x.post_id===p.id).map(x=>({...x,profiles:commenterMap.get(x.user_id)||null}))}));
-  const {data:follows,error:followError}=await client.from('follows').select('following_id').eq('follower_id',userId());
-  if(followError){v.innerHTML='<div class="empty">Could not load follows: '+esc(followError.message)+'</div>';return}
-  followingIds=new Set((follows||[]).map(x=>x.following_id));
-  v.innerHTML='<div class="stories"><div class="story"><div class="ring"><div>＋</div></div><span class="muted">Your moment</span></div><div class="story"><div class="ring"><div>✦</div></div><span class="muted">NOIR vibes</span></div></div><h3>For you <span class="muted">· Latest posts</span></h3>'+(cachedPosts.length?cachedPosts.map(postCard).join(''):'<div class="empty">No posts yet. Be the first to share a moment.</div>');
-  wirePostActions();
+  try {
+    const {data:posts,error}=await client.from('posts').select('id,user_id,caption,media_path,media_type,created_at').order('created_at',{ascending:false}).limit(50);
+    if(error) throw error;
+    const rows=posts||[], ids=[...new Set(rows.map(p=>p.user_id).filter(Boolean))], postIds=rows.map(p=>p.id);
+    let profiles=[],likes=[],comments=[],follows=[];
+    // Posts are the essential feed data. Optional profile/activity queries must not hide posts.
+    if(ids.length){
+      const r=await client.from('profiles').select('id,username,display_name,avatar_url').in('id',ids);
+      if(!r.error) profiles=r.data||[];
+    }
+    if(postIds.length){
+      const [lr,cr]=await Promise.all([
+        client.from('likes').select('post_id,user_id').in('post_id',postIds),
+        client.from('comments').select('id,post_id,user_id,body,created_at').in('post_id',postIds).order('created_at',{ascending:true})
+      ]);
+      if(!lr.error) likes=lr.data||[];
+      if(!cr.error) comments=cr.data||[];
+    }
+    const commenterIds=[...new Set(comments.map(x=>x.user_id).filter(Boolean))];
+    let commenterProfiles=[];
+    if(commenterIds.length){
+      const r=await client.from('profiles').select('id,username').in('id',commenterIds);
+      if(!r.error) commenterProfiles=r.data||[];
+    }
+    const profileMap=new Map(profiles.map(x=>[x.id,x]));
+    const commenterMap=new Map(commenterProfiles.map(x=>[x.id,x]));
+    cachedPosts=rows.map(p=>({...p,profiles:profileMap.get(p.user_id)||null,likes:likes.filter(x=>x.post_id===p.id),comments:comments.filter(x=>x.post_id===p.id).map(x=>({...x,profiles:commenterMap.get(x.user_id)||null}))}));
+    const fr=await client.from('follows').select('following_id').eq('follower_id',userId());
+    if(!fr.error) follows=fr.data||[];
+    followingIds=new Set(follows.map(x=>x.following_id));
+    v.innerHTML='<div class="stories"><div class="story"><div class="ring"><div>＋</div></div><span class="muted">Your moment</span></div><div class="story"><div class="ring"><div>✦</div></div><span class="muted">NOIR vibes</span></div></div><h3>For you <span class="muted">· Latest posts</span></h3>'+(cachedPosts.length?cachedPosts.map(postCard).join(""):'<div class="empty">No posts yet. Be the first to share something.</div>');
+    wirePostActions();
+  } catch(error) {
+    v.innerHTML='<div class="empty">Could not load posts: '+esc(error?.message||'Unknown error')+'</div>';
+  }
 }
 function postCard(p){const prof=p.profiles||{},name=prof.username||"member",liked=(p.likes||[]).some(x=>x.user_id===userId()),likes=(p.likes||[]).length,comments=p.comments||[];let media=p.media_path?`<${p.media_type==="video"?"video controls playsinline":"img"} class="media" src="${esc(mediaUrl(p.media_path))}" ${p.media_type==="video"?'':'alt="Post media" loading="lazy"'}></${p.media_type==="video"?"video":"img"}>`:`<div class="empty">Media unavailable</div>`;
 return `<article class="post" id="post-${p.id}"><div class="posthead"><div class="avatar">${esc(name[0]?.toUpperCase()||"N")}</div><div><b>@${esc(name)}</b><div class="muted">${new Date(p.created_at).toLocaleString()}</div></div>${p.user_id!==userId()?`<button class="btn" data-follow="${p.user_id}">${followingIds.has(p.user_id)?"Following":"Follow"}</button>`:""}</div>${media}<div class="actions"><button class="${liked?"liked":""}" data-like="${p.id}">${liked?"♥":"♡"}</button><button data-focus-comment="${p.id}">▢</button><button data-share="${p.id}">➤</button></div><div class="postbody"><b>${likes} likes</b><p class="caption"><b>@${esc(name)}</b> ${esc(p.caption||"")}</p></div><div class="comments">${comments.slice(-3).map(c=>`<div class="commentline"><b>@${esc(c.profiles?.username||"member")}</b> ${esc(c.body)}</div>`).join("")}<form class="commentform" data-comment-form="${p.id}"><input class="field" name="body" maxlength="500" placeholder="Add a comment…" required><button class="primary">Post</button></form></div></article>`}
