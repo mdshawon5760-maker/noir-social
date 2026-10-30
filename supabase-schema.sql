@@ -28,7 +28,7 @@ alter table public.posts add column if not exists media_type text not null defau
 
 -- Older versions may have a media_url column. Make it optional and preserve
 -- existing URLs so older posts remain visible after upgrading.
-do $
+do $$
 begin
   if exists (
     select 1 from information_schema.columns
@@ -39,7 +39,7 @@ begin
     alter table public.posts alter column media_url drop not null;
     execute 'update public.posts set media_path = media_url where media_path is null and media_url is not null';
   end if;
-end $;
+end $$;
 
 create index if not exists posts_created_at_idx on public.posts (created_at desc);
 create index if not exists posts_user_id_idx on public.posts (user_id);
