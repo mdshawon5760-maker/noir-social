@@ -25,10 +25,21 @@ create table if not exists public.posts (
 -- Upgrade an existing posts table created by an earlier version.
 alter table public.posts add column if not exists media_path text;
 alter table public.posts add column if not exists media_type text not null default 'image';
--- Older versions used media_url; allow new posts to omit that legacy column.
-alter table public.posts alter column media_url drop not null;
-alter table public.posts add column if not exists media_path text;
-alter table public.posts add column if not exists media_type text not null default 'image';
+
+-- Older versions may have a media_url column. Make it optional and preserve
+-- existing URLs so older posts remain visible after upgrading.
+do $
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'posts'
+      and column_name = 'media_url'
+  ) then
+    alter table public.posts alter column media_url drop not null;
+    execute 'update public.posts set media_path = media_url where media_path is null and media_url is not null';
+  end if;
+end $;
 
 create index if not exists posts_created_at_idx on public.posts (created_at desc);
 create index if not exists posts_user_id_idx on public.posts (user_id);
