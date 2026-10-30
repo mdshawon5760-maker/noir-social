@@ -25,6 +25,10 @@ create table if not exists public.posts (
 -- Upgrade an existing posts table created by an earlier version.
 alter table public.posts add column if not exists media_path text;
 alter table public.posts add column if not exists media_type text not null default 'image';
+-- Older versions used media_url; allow new posts to omit that legacy column.
+alter table public.posts alter column media_url drop not null;
+alter table public.posts add column if not exists media_path text;
+alter table public.posts add column if not exists media_type text not null default 'image';
 
 create index if not exists posts_created_at_idx on public.posts (created_at desc);
 create index if not exists posts_user_id_idx on public.posts (user_id);
