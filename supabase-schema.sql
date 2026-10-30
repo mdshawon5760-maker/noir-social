@@ -21,6 +21,11 @@ create table if not exists public.posts (
   media_type text not null check (media_type in ('image','video')),
   created_at timestamptz not null default now()
 );
+
+-- Upgrade an existing posts table created by an earlier version.
+alter table public.posts add column if not exists media_path text;
+alter table public.posts add column if not exists media_type text not null default 'image';
+
 create index if not exists posts_created_at_idx on public.posts (created_at desc);
 create index if not exists posts_user_id_idx on public.posts (user_id);
 
